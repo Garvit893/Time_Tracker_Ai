@@ -14,7 +14,7 @@ MODEL = 'llama3-groq-70b-8192-tool-use-preview'
 
 
 def send_email(recipient, subject, body):
-    EMAIL_ADDRESS = 'Email_Personal'
+    EMAIL_ADDRESS = 'garvit@marketingmindz.in'
     EMAIL_PASSWORD = 'Pass'  # Don't Use Gmail I used Roundcube Webmail
 
     msg = EmailMessage()
