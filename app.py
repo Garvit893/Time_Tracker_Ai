@@ -2,18 +2,20 @@ import streamlit as st
 import pandas as pd
 import smtplib
 from email.message import EmailMessage
-from groq import Groq
+from email_validator import validate_email, EmailNotValidError
+import os
+from groq import Groq  
 
-# Access the API key from secrets
-api_key = st.secrets["general"]["api_key"]
+
+api_key = st.secrets["groq"]["api_key"]  
 client = Groq(api_key=api_key)
 
 MODEL = 'llama3-groq-70b-8192-tool-use-preview'
 
 # Function to send an email
 def send_email(recipient, subject, body):
-    EMAIL_ADDRESS = st.secrets["general"]["email_address"]  # Access email from secrets
-    EMAIL_PASSWORD = st.secrets["general"]["email_password"]  # Access password from secrets
+    EMAIL_ADDRESS = st.secrets["general"]["email_address"] 
+    EMAIL_PASSWORD = st.secrets["general"]["email_password"]  
 
     msg = EmailMessage()
     msg['Subject'] = subject
@@ -21,11 +23,12 @@ def send_email(recipient, subject, body):
     msg['To'] = recipient
     msg.set_content(body)
 
-    with smtplib.SMTP('smtp.marketingmindz.in', 587) as smtp:
+    with smtplib.SMTP('smtp.marketingmindz.in', 587) as smtp: 
         smtp.starttls()
         smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         smtp.send_message(msg)
 
+# Function to categorize reasons
 def categorize_reason(reason):
     if "official" in reason.lower():
         return "Official"
@@ -38,6 +41,7 @@ def categorize_reason(reason):
     else:
         return "Not Genuine"
 
+# Function to generate email body using Groq API
 def generate_email_body(employee_name, reason, category):
     prompt = f"Dear {employee_name},\n\n"
     if category == "Shady":
@@ -45,6 +49,7 @@ def generate_email_body(employee_name, reason, category):
     else:
         prompt += f"Your reported work hours are less than 48 hours this week due to the reason: '{reason}'. Please provide a valid reason.\n\nBest Regards,\nManagement"
 
+   
     try:
         response = client.chat(
             model=MODEL,
@@ -58,12 +63,15 @@ def generate_email_body(employee_name, reason, category):
     except Exception as e:
         return f"An error occurred while generating content: {str(e)}"
 
-st.title('Time Tracker')
+# Streamlit UI
+st.title('Work Hour Tracker')
 
+# Upload Excel file
 uploaded_file = st.file_uploader("Upload Excel file", type=["xlsx"])
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
 
+    # Assuming the Excel file has 'Employee Name', 'Email', 'Work Hours', 'Reason' columns
     defaulters = df[df['Work Hours'] < 48]
     
     approved_reasons = []
@@ -92,6 +100,7 @@ if uploaded_file:
             body = generate_email_body(employee_name, reason, category)
             send_email(email, subject, body)
 
+    # Display results
     st.subheader("Approved Reasons")
     approved_df = pd.DataFrame(approved_reasons, columns=["Employee Name", "Email", "Reason", "Category"])
     st.table(approved_df)
@@ -110,6 +119,7 @@ if uploaded_file:
     else:
         st.info("No emails sent; all reasons were valid.")
 
+    # Save results to Excel
     output_df = pd.concat([approved_df, not_genuine_df, shady_df], axis=0)
     output_file = 'defaulter_results.xlsx'
     output_df.to_excel(output_file, index=False)
