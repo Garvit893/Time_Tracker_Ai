@@ -3,4 +3,3 @@ pandas
 email-validator
 openpyxl
 groq  
-smtplib
