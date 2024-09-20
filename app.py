@@ -2,20 +2,18 @@ import streamlit as st
 import pandas as pd
 import smtplib
 from email.message import EmailMessage
-from email_validator import validate_email, EmailNotValidError
-import os
-from groq import Groq 
+from groq import Groq
 
-
-api_key = "APi_Key"  
+# Access the API key from secrets
+api_key = st.secrets["general"]["api_key"]
 client = Groq(api_key=api_key)
 
 MODEL = 'llama3-groq-70b-8192-tool-use-preview'
 
-
+# Function to send an email
 def send_email(recipient, subject, body):
-    EMAIL_ADDRESS = 'garvit@marketingmindz.in'
-    EMAIL_PASSWORD = 'Pass'  # Don't Use Gmail I used Roundcube Webmail
+    EMAIL_ADDRESS = st.secrets["general"]["email_address"]  # Access email from secrets
+    EMAIL_PASSWORD = st.secrets["general"]["email_password"]  # Access password from secrets
 
     msg = EmailMessage()
     msg['Subject'] = subject
@@ -23,7 +21,7 @@ def send_email(recipient, subject, body):
     msg['To'] = recipient
     msg.set_content(body)
 
-    with smtplib.SMTP('smtp.marketingmindz.in', 587) as smtp:  # Change the server according to the mail and also chage the port "587"
+    with smtplib.SMTP('smtp.marketingmindz.in', 587) as smtp:
         smtp.starttls()
         smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         smtp.send_message(msg)
