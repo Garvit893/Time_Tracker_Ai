@@ -10,9 +10,9 @@ client = Groq(api_key=api_key)
 model = 'llama3-70b-8192'
 
 def send_email(recipient, subject, body):
-    email_address = 'garvit@marketingmindz.in'
-    email_password = 'GFsJ271b'
-    
+    email_address = st.secrets["general"]["email_address"]
+    email_password = st.secrets["general"]["email_password"]
+
     try:
         msg = EmailMessage()
         msg['Subject'] = subject
