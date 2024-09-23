@@ -5,49 +5,56 @@ from email.message import EmailMessage
 from email_validator import validate_email, EmailNotValidError
 from groq import Groq
 
-api_key = st.secrets["groq"]["api_key"]
+# Set up Streamlit secrets
+api_key = "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"
+
+# Set up Groq client
 client = Groq(api_key=api_key)
-MODEL = 'llama3-groq-70b-8192'
+model = 'llama3-70b-8192'
 
+# Function to send email
 def send_email(recipient, subject, body):
-    EMAIL_ADDRESS = st.secrets["general"]["email_address"]
-    EMAIL_PASSWORD = st.secrets["general"]["email_password"] 
-
-    msg = EmailMessage()
-    msg['Subject'] = subject
-    msg['From'] = EMAIL_ADDRESS
-    msg['To'] = recipient
-    msg.set_content(body)
-
-    with smtplib.SMTP('smtp.marketingmindz.in', 587) as smtp:
-        smtp.starttls()
-        smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-        smtp.send_message(msg)
-
-def process_reason_and_generate_email(employee_name, reason):
-    prompt = (
-        f"Categorize the following reason and generate an email body:\n\n"
-        f"Employee Name: {employee_name}\n"
-        f"Reason: {reason}\n\n"
-        f"Categories: Official, Emergency, Personal, Shady.\n"
-        f"Please respond in the following format:\n"
-        f"Category: <category>\n"
-        f"Email Body: <email body>"
-    )
+    email_address = 'garvit@marketingmindz.in'
+    email_password = 'GFsJ271b'
     
     try:
-        response = client.chat_complete(  
-            model=MODEL,
+        msg = EmailMessage()
+        msg['Subject'] = subject
+        msg['From'] = email_address
+        msg['To'] = recipient
+        msg.set_content(body)
+
+        with smtplib.SMTP('smtp.marketingmindz.in', 587) as smtp:
+            smtp.starttls()
+            smtp.login(email_address, email_password)
+            smtp.send_message(msg)
+        return True
+    except Exception as e:
+        st.error(f"Error sending email: {str(e)}")
+        return False
+
+# Function to process reason and generate email
+def process_reason_and_generate_email(employee_name, reason):
+    try:
+        prompt = (
+    f"Categorize the following reason and generate an email body:\n\n"
+    f"Employee Name: {employee_name}\n"
+    f"Reason: {reason}\n\n"
+    f"Categories: Official, Emergency, Personal, Shady.\n"
+    f"Greet {employee_name} appropriately and use a tone fitting for a manager and the report is for the whole week.\n"
+    f"The name in the sign-off/closing should be 'HR Team'.\n"
+    f"Please respond in the following format:\n"
+    f"Category: <category>\n"
+    f"Email Body: <email body>"
+)
+
+        response = client.chat.completions.create(
+            model=model,
             messages=[{"role": "user", "content": prompt}]
         )
 
-        print("Prompt sent to AI:", prompt)  
-        print("AI Response:", response)  
-
-        if response and 'choices' in response and len(response['choices']) > 0:
-            content = response['choices'][0]['message']['content'].strip()
-            print("Raw AI Content:", content)  
-          
+        if response:
+            content = response.choices[0].message.content.strip()
             if "Category:" in content and "Email Body:" in content:
                 category_line, body_line = content.split("Email Body:")
                 category = category_line.split("Category:")[1].strip()
@@ -58,16 +65,22 @@ def process_reason_and_generate_email(employee_name, reason):
         else:
             return "Error", "Unexpected response structure."
     except Exception as e:
-        return "Error", f"An error occurred while generating content: {str(e)}"
+        st.error(f"Error processing reason: {str(e)}")
+        return "Error", "An error occurred while generating content."
 
+# Streamlit app
 st.title('Work Hour Tracker')
 
 uploaded_file = st.file_uploader("Upload Excel file", type=["xlsx"])
 if uploaded_file:
-    df = pd.read_excel(uploaded_file)
+    try:
+        df = pd.read_excel(uploaded_file)
+    except Exception as e:
+        st.error(f"Error reading Excel file: {str(e)}")
+        st.stop()
 
     defaulters = df[df['Work Hours'] < 48]
-    
+
     approved_reasons = []
     not_genuine_reasons = []
     shady_reasons = []
@@ -81,27 +94,28 @@ if uploaded_file:
         if pd.isna(email) or not isinstance(email, str) or "@" not in email:
             st.warning(f"Invalid email for {employee_name}. Skipping.")
             continue
-        
+
         try:
             validate_email(email)
         except EmailNotValidError:
             st.warning(f"Invalid email for {employee_name}. Skipping.")
             continue
-        
+
         category, body = process_reason_and_generate_email(employee_name, reason)
         subject = f"Attendance Alert for {employee_name}"
 
         if category in ["Official", "Emergency", "Personal"]:
             approved_reasons.append((employee_name, email, reason, category))
-            send_email(email, subject, body)
+            if send_email(email, subject, body):
+                email_list.append(email)
         elif category == "Shady":
             shady_reasons.append((employee_name, email, reason))
-            email_list.append(email)
-            send_email(email, subject, body)
+            if send_email(email, subject, body):
+                email_list.append(email)
         else:
             not_genuine_reasons.append((employee_name, email, reason, category))
-            email_list.append(email)
-            send_email(email, subject, body)
+            if send_email(email, subject, body):
+                email_list.append(email)
 
     st.subheader("Approved Reasons")
     approved_df = pd.DataFrame(approved_reasons, columns=["Employee Name", "Email", "Reason", "Category"])
@@ -112,7 +126,7 @@ if uploaded_file:
     st.table(not_genuine_df)
 
     st.subheader("Shady Reasons")
-    shady_df = pd.DataFrame(shady_reasons, columns=["Employee Name", "Email", "Reason"])
+    shady_df = pd .DataFrame(shady_reasons, columns=["Employee Name", "Email", "Reason"])
     st.table(shady_df)
 
     if email_list:
@@ -132,5 +146,5 @@ if uploaded_file:
             file_name=output_file,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-    
+
     st.success(f"Results saved to {output_file}")
