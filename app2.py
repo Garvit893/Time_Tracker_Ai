@@ -5,14 +5,10 @@ from email.message import EmailMessage
 from email_validator import validate_email, EmailNotValidError
 from groq import Groq
 
-# Set up Streamlit secrets
-api_key = "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"
-
-# Set up Groq client
+api_key = st.secrets["groq"]["api_key"]  
 client = Groq(api_key=api_key)
 model = 'llama3-70b-8192'
 
-# Function to send email
 def send_email(recipient, subject, body):
     email_address = 'garvit@marketingmindz.in'
     email_password = 'GFsJ271b'
