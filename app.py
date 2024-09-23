@@ -3,77 +3,80 @@ import pandas as pd
 import smtplib
 from email.message import EmailMessage
 from email_validator import validate_email, EmailNotValidError
-import os
-from groq import Groq  
-
+from groq import Groq
 
 api_key = st.secrets["groq"]["api_key"]  
 client = Groq(api_key=api_key)
+model = 'llama3-70b-8192'
 
-MODEL = 'llama3-groq-70b-8192-tool-use-preview'
-
-# Function to send an email
 def send_email(recipient, subject, body):
-    EMAIL_ADDRESS = st.secrets["general"]["email_address"] 
-    EMAIL_PASSWORD = st.secrets["general"]["email_password"]  
+    email_address = st.secrets["general"]["email_address"]
+    email_password = st.secrets["general"]["email_password"]
 
-    msg = EmailMessage()
-    msg['Subject'] = subject
-    msg['From'] = EMAIL_ADDRESS
-    msg['To'] = recipient
-    msg.set_content(body)
-
-    with smtplib.SMTP('smtp.marketingmindz.in', 587) as smtp: 
-        smtp.starttls()
-        smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-        smtp.send_message(msg)
-
-# Function to categorize reasons
-def categorize_reason(reason):
-    if "official" in reason.lower():
-        return "Official"
-    elif "emergency" in reason.lower():
-        return "Emergency"
-    elif "personal" in reason.lower():
-        return "Due to Some Personal Work"
-    elif "slept in the office" in reason.lower() or "emergency in office" in reason.lower():
-        return "Shady"
-    else:
-        return "Not Genuine"
-
-# Function to generate email body using Groq API
-def generate_email_body(employee_name, reason, category):
-    prompt = f"Dear {employee_name},\n\n"
-    if category == "Shady":
-        prompt += f"Your reported work hours are less than 48 hours this week due to the reason: '{reason}'. Please refrain from engaging in personal work during office hours.\n\nBest Regards,\nManagement"
-    else:
-        prompt += f"Your reported work hours are less than 48 hours this week due to the reason: '{reason}'. Please provide a valid reason.\n\nBest Regards,\nManagement"
-
-   
     try:
-        response = client.chat(
-            model=MODEL,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        
-        if response and 'choices' in response and len(response['choices']) > 0:
-            return response['choices'][0]['message']['content']
-        else:
-            return "Error generating email content."
-    except Exception as e:
-        return f"An error occurred while generating content: {str(e)}"
+        msg = EmailMessage()
+        msg['Subject'] = subject
+        msg['From'] = email_address
+        msg['To'] = recipient
+        msg.set_content(body)
 
-# Streamlit UI
+        with smtplib.SMTP('smtp.marketingmindz.in', 587) as smtp:
+            smtp.starttls()
+            smtp.login(email_address, email_password)
+            smtp.send_message(msg)
+        return True
+    except Exception as e:
+        st.error(f"Error sending email: {str(e)}")
+        return False
+
+# Function to process reason and generate email
+def process_reason_and_generate_email(employee_name, reason):
+    try:
+        prompt = (
+    f"Categorize the following reason and generate an email body:\n\n"
+    f"Employee Name: {employee_name}\n"
+    f"Reason: {reason}\n\n"
+    f"Categories: Official, Emergency, Personal, Shady.\n"
+    f"Greet {employee_name} appropriately and use a tone fitting for a manager and the report is for the whole week.\n"
+    f"The name in the sign-off/closing should be 'HR Team'.\n"
+    f"Please respond in the following format:\n"
+    f"Category: <category>\n"
+    f"Email Body: <email body>"
+)
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        if response:
+            content = response.choices[0].message.content.strip()
+            if "Category:" in content and "Email Body:" in content:
+                category_line, body_line = content.split("Email Body:")
+                category = category_line.split("Category:")[1].strip()
+                body = body_line.strip()
+                return category, body
+            else:
+                return "Unknown", "Could not parse the response correctly."
+        else:
+            return "Error", "Unexpected response structure."
+    except Exception as e:
+        st.error(f"Error processing reason: {str(e)}")
+        return "Error", "An error occurred while generating content."
+
+# Streamlit app
 st.title('Work Hour Tracker')
 
-# Upload Excel file
 uploaded_file = st.file_uploader("Upload Excel file", type=["xlsx"])
 if uploaded_file:
-    df = pd.read_excel(uploaded_file)
+    try:
+        df = pd.read_excel(uploaded_file)
+    except Exception as e:
+        st.error(f"Error reading Excel file: {str(e)}")
+        st.stop()
 
-    # Assuming the Excel file has 'Employee Name', 'Email', 'Work Hours', 'Reason' columns
     defaulters = df[df['Work Hours'] < 48]
-    
+
     approved_reasons = []
     not_genuine_reasons = []
     shady_reasons = []
@@ -83,24 +86,33 @@ if uploaded_file:
         employee_name = row['Employee Name']
         email = row['Email']
         reason = row['Reason']
-        
-        category = categorize_reason(reason)
-        if category in ["Official", "Emergency", "Due to Some Personal Work"]:
+
+        if pd.isna(email) or not isinstance(email, str) or "@" not in email:
+            st.warning(f"Invalid email for {employee_name}. Skipping.")
+            continue
+
+        try:
+            validate_email(email)
+        except EmailNotValidError:
+            st.warning(f"Invalid email for {employee_name}. Skipping.")
+            continue
+
+        category, body = process_reason_and_generate_email(employee_name, reason)
+        subject = f"Attendance Alert for {employee_name}"
+
+        if category in ["Official", "Emergency", "Personal"]:
             approved_reasons.append((employee_name, email, reason, category))
+            if send_email(email, subject, body):
+                email_list.append(email)
         elif category == "Shady":
             shady_reasons.append((employee_name, email, reason))
-            email_list.append(email)
-            subject = f"Attendance Alert for {employee_name}"
-            body = generate_email_body(employee_name, reason, category)
-            send_email(email, subject, body)
+            if send_email(email, subject, body):
+                email_list.append(email)
         else:
             not_genuine_reasons.append((employee_name, email, reason, category))
-            email_list.append(email)
-            subject = f"Attendance Alert for {employee_name}"
-            body = generate_email_body(employee_name, reason, category)
-            send_email(email, subject, body)
+            if send_email(email, subject, body):
+                email_list.append(email)
 
-    # Display results
     st.subheader("Approved Reasons")
     approved_df = pd.DataFrame(approved_reasons, columns=["Employee Name", "Email", "Reason", "Category"])
     st.table(approved_df)
@@ -110,7 +122,7 @@ if uploaded_file:
     st.table(not_genuine_df)
 
     st.subheader("Shady Reasons")
-    shady_df = pd.DataFrame(shady_reasons, columns=["Employee Name", "Email", "Reason"])
+    shady_df = pd .DataFrame(shady_reasons, columns=["Employee Name", "Email", "Reason"])
     st.table(shady_df)
 
     if email_list:
@@ -119,8 +131,16 @@ if uploaded_file:
     else:
         st.info("No emails sent; all reasons were valid.")
 
-    # Save results to Excel
     output_df = pd.concat([approved_df, not_genuine_df, shady_df], axis=0)
     output_file = 'defaulter_results.xlsx'
     output_df.to_excel(output_file, index=False)
+
+    with open(output_file, "rb") as f:
+        st.download_button(
+            label="Download Results",
+            data=f,
+            file_name=output_file,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
     st.success(f"Results saved to {output_file}")
