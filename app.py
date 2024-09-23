@@ -37,7 +37,7 @@ def process_reason_and_generate_email(employee_name, reason):
     f"Employee Name: {employee_name}\n"
     f"Reason: {reason}\n\n"
     f"Categories: Official, Emergency, Personal, Shady.\n"
-    f"Greet {employee_name} appropriately and use a tone fitting for a manager and the report is for the whole week.\n"
+    f"Greet {employee_name} appropriately and use a tone fitting for a manager and the report is for the whole week if you find their reason not satisfctory then ask them the explanation for their more or less number of hours then 48 hours per week.\n"
     f"The name in the sign-off/closing should be 'HR Team'.\n"
     f"Please respond in the following format:\n"
     f"Category: <category>\n"
